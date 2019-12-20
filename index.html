@@ -1,0 +1,710 @@
+<html>
+<head>
+
+<meta charset = "utf-8">
+
+	<style>
+		body, document{
+			cursor: default;
+		}
+	
+		#mainContainer{
+			//background-color: #F0F0F0;
+			
+			z-index: 20;
+			
+			width: 500px;
+			height: 500px;
+			position: relative;
+			margin: auto;
+			
+			border-left: dotted black 2px;
+			border-right: dotted black 2px;
+		}
+		#bgImage{
+			background-image: url( "bg2.png" );
+			opacity: 0.2;
+			width: 500px;
+			height: 500px;
+			position: absolute;
+		}
+		#xAxis{
+			position: absolute;
+			width: 100%;
+			height: 2px;
+			background-color: rgba( 0, 0, 0, 100 );
+			bottom: 0;
+		}
+		#yAxis{
+			position: absolute;
+			width: 2px;
+			height: 100%;
+			background-color: rgba( 0, 0, 0, 100 );
+		}
+			#yAxis p{
+				position: absolute;
+				bottom: 0;
+				left: -10px;
+			}
+		#ball{
+			width: 20px;
+			height: 20px;
+			background-color: red;
+			border-radius: 1000px;
+			position: absolute;
+			bottom: -0px;
+			//margin-bottom: 1px;
+			//margin-left: -10px;
+		}
+		#ball.groundHitted{
+			border-radius: 40px / 20px !important;
+		}
+		#mouseVector{
+			height: 1px;
+			width: 0px;
+			background-color: red;
+		}
+		
+		svg#line{
+			position: absolute;
+		}
+		
+		#drawingOfDegree{
+			position: absolute;
+			bottom: 0;
+		}
+		
+		#resetButton{
+			font-size: 300%;
+			color: black;
+			background-color: white;
+			top: 45%;
+			left: 40%;
+			margin-left: -40px;
+			margin-top: -20px;
+			margin: auto;
+			position: absolute;
+			display: none;
+		}
+		#resetButton a{
+			color: black;
+			text-decoration: none;
+		}
+		
+		
+		#infoBox{
+			margin-top: 30px;
+			width: 30%;
+			float: left;
+			position: relative;
+			//background-color: rgba( 0,0,0, 0.06 );
+			border: 1px solid black;
+			padding: 4px;
+		}
+		
+		#planetBox{
+			float: right;
+			position: relative;
+			margin-top: 10px;
+		}
+		
+		#planetBox *{
+			margin: 0px;
+		}
+		
+		
+		p, h1, h2, h3{
+			margin: 0;
+			border-top: solid 1px;
+			border-top-color: rgba( 0,0,0, 0.2 );
+		}
+		h1, h2, h3{
+			background-color: rgba( 0,0,0, 0.9 );
+			color: white;
+			padding-left: 3px;
+			padding-right: 3px;
+			text-align: center;
+		}
+		
+		
+		.unselectable {
+			-webkit-touch-callout: none;
+			-webkit-user-select: none;
+			-khtml-user-select: none;
+			-moz-user-select: none;
+			-ms-user-select: none;
+			user-select: none;
+		}
+	</style>
+	
+	
+	<script src = "script.js">
+	</script>
+	<script src = "jquery.js">
+	</script>
+	
+	
+	<script>
+
+	// Earth, europe ~ 9.81; Jupiter ~ 24.79; Moon ~ 1.62
+	var forceGravitation = 9.81; // m per sec^2
+	// w zasadzie to predkosc animacji, nie accuracy
+	// robione dla 20 ms
+	var accuracy = 20; // in ms
+	
+	var fieldWidth = 800;
+	var fieldHeight = 400;
+	
+	var ballSize = 20;
+	var ballDensity = 10;
+	var ballVolume;
+	var ballMass;
+
+
+	var maxBallHeight = 0;
+	
+	var wasBallClicked = 0;
+	
+	var startMouseX = 'undefined';
+	var startMouseY = 'undefined';
+
+	var vectorX = 'undefined';
+	var vectorY = 'undefined';
+	var vectorLength = 'undefined';
+	
+	var cosAngle;
+	var sinAngle;
+	
+	var timeToMaxHeight = 'undefined';
+	
+	//Prędkość pocz. pozioma: v0x = v0 · cos α
+	//Prędkość pocz. pionowa: v0y = v0 · sin α
+	var v0x;
+	var v0y;
+	// odleglosc przebyta
+	var travelledX;
+	var travelledY;
+	// takie tam oszustwo ktore zapisuje travelledX z ostatniego kroku zeby pilka sie nie cofała za sprawą oporu
+	var travelledXLastPos;
+	
+	
+	var travelledYCounter = 1; // counter for first few steps of travelling in Y axis
+	// czas ktory minal
+	var timeElapsedX = 0;
+	var timeElapsedY = 0;
+
+	var forceX = 'undefined';
+	var forceY = 'undefined';
+	
+	var forceMultiplier;
+	
+	var animationInterval;
+	
+	// wyliczane ze wzoru
+	var forceDragX = 'undefined';
+	var forceDragY = 'undefined';
+	
+	//wpisywane przez uzytkownika
+	var userForceDrag = 1;
+	
+	
+	
+	// more delayer, less accuracy (more "choppy")
+	var mouseMoveDelayer = 1;
+	var mouseMoveCounter = 0;
+	
+	
+	//this function getscomputedstyle and returns only one value - given as parameter
+	function getStylePropertyValue( selector, neededValue ){
+		return window.getComputedStyle( selector, null ).getPropertyValue( neededValue );
+	}
+		
+	
+	
+	
+	function animate_ball(){
+	
+	
+		//forceDragX = -0.5 * 1 * Math.pow( v0x, 2 ) * 0.47 * -v0x;
+		//forceDragY = -0.5 * 1 * Math.pow( v0y, 2 ) * 0.47 * -v0y;
+		
+		
+		
+//drag settings for ball
+		// calculations
+		forceDragY = 0.47 * (userForceDrag*v0y*v0y)/2 * (ballSize/20) / ballMass;
+		// decreasing speed of ball
+		v0y -= forceDragY/200;
+		
+		// and same for X axis
+		forceDragX = 0.47 * (userForceDrag*v0x*v0y)/2 * (ballSize/20) / ballMass;
+		v0x -= forceDragX/200;
+		
+		//x^2 + y^2 i to pod pierwiastek
+		var v0 = Math.sqrt( (v0y*v0y) + (v0x*v0x) );
+		
+		
+		
+		$( '#idBallSpeed' )[ 0 ].innerHTML = parseInt( v0 );
+		
+///////////
+// MAGIC //
+///////////
+		// przy kazdym kroku dodaj accuracy do czasu który minął
+		timeElapsedX += accuracy/100;
+		timeElapsedY += accuracy/100;
+		
+		// set position of X
+		travelledX = timeElapsedX * v0x;
+		$( '#ball' )[ 0 ].style.marginLeft = travelledX;
+		
+		
+		
+		// Check if ball not out of boundaries
+		var marginBottomOfBall = parseInt( getStylePropertyValue( $( '#ball' )[0], "margin-bottom" ) );
+		
+		if( marginBottomOfBall > ballSize/2 ){
+			travelledY = v0y * timeElapsedY - forceGravitation/2 * Math.pow( timeElapsedY, 2 );
+			$( '#ball' )[ 0 ].style.marginBottom = travelledY;
+			
+			
+			// set maxBallHeight by checking actual position and comparing with maxBallHeight
+			if( travelledY > maxBallHeight ){
+				maxBallHeight = parseInt( travelledY );
+			}else{
+				$( 'span#idMaxBallHeight' )[ 0 ].innerHTML = maxBallHeight/1000;
+				
+				if( timeToMaxHeight === 'undefined' )
+					timeToMaxHeight = timeElapsedY;
+				
+				$( 'span#idFlightTimeToMaxHeight' )[ 0 ].innerHTML = Math.round( timeToMaxHeight/10 * 100 ) / 100;
+				
+			
+			}
+			
+		}else{
+// GROUND HIT
+			// this is for counting Y position
+			travelledY = v0y * timeElapsedY - forceGravitation/2 * Math.pow( timeElapsedY, 2 );
+			$( '#ball' )[ 0 ].style.marginBottom = travelledY;
+			
+			if( timeElapsedY > 1 ){
+				clearInterval( animationInterval );
+				
+				$( '#resetButton' )[ 0 ].style.display = "inline";
+				
+				
+				// set span of boink location
+				$( 'span#idBoink' )[ 0 ].innerHTML = parseInt( travelledX )/1000;
+				
+				$( 'span#idFlightTime' )[ 0 ].innerHTML = Math.round( timeElapsedY/10 * 100 ) / 100;
+				
+				// Make ball at height 0 when it was higher after hit
+				var heightAtHit = getStylePropertyValue(  $( '#ball' )[ 0 ], "margin-bottom"  );
+				heightAtHit = parseInt( heightAtHit );
+				
+				if( parseInt( heightAtHit ) > 0 )
+					$( '#ball' )[ 0 ].style.marginBottom = 0;
+				
+				
+				
+				// settings for ball to make it more flat when floor hit
+				$( '#ball' )[ 0 ].style.borderRadius = "40px / 20px !important";
+				
+				// var for counting "hit force" and making ball flatter
+				var hitForceFlatMaking = v0y / 30;
+				$( '#ball' )[ 0 ].style.width = ballSize;
+				
+				if( hitForceFlatMaking > 1 )
+					$( '#ball' )[ 0 ].style.height = ballSize/hitForceFlatMaking;
+			}
+		}
+		
+		
+		
+	}
+	
+	function calculate_ball_mass(){		//calculate ball volume
+		var ballRadius = ballSize / 2;
+		
+		ballVolume = (4/3) * Math.PI * ballRadius * ballRadius * ballRadius; // 
+		
+		//calculate ball mass
+		ballMass = ballVolume * ballDensity;
+		
+		// meters to cm and mg/cm^3 to g/cm^3 and we have kilograms
+		ballMass = ballMass / 1000 / 100;
+		
+		// round ballMass to 2 decimals
+		ballMass = parseInt( ballMass * 100 );
+		ballMass /= 100;
+		
+		// show mass in infobox
+		
+		$( '#idBallMass' )[ 0 ].innerHTML = ballMass;
+	}
+	
+	
+	
+////////////////////
+// DOCUMENT READY //
+////////////////////
+
+		$( 'document' ).ready( function(){
+// infobox settings at start
+		$( 'span#idStartBallPos' )[ 0 ].innerHTML = "x: " + ballSize/2 + ",  y: " + ballSize/2;
+		$( 'span#idBallSize' )[ 0 ].innerHTML = ballSize;
+		
+// MASS
+		ballDensity = $( '#ballDensityTextBox input' ).val();
+	// show settings near to suwak
+		$( '#ballDensityTextBox span' )[ 0 ].innerHTML = ballDensity*10;
+		
+		ballSize = $( '#ballSizeTextBox input' ).val();
+	// show settings near to suwak
+		$( '#ballSizeTextBox span' )[ 0 ].innerHTML = ballSize;
+		
+		calculate_ball_mass();
+		
+// DRAG
+		// show settings near to suwak
+		userForceDrag = $( '#dragTextBox input' ).val();
+		
+		$( '#dragTextBox span' )[ 0 ].innerHTML = userForceDrag;
+		
+//////////////
+// SETTINGS //
+//////////////		
+
+// set dimensions of field
+		$( '#mainContainer' )[ 0 ].style.width = fieldWidth;
+		$( '#mainContainer' )[ 0 ].style.height = fieldHeight;
+		
+		// set dimensions of bgImage
+		$( '#bgImage' )[ 0 ].style.width = fieldWidth;
+		$( '#bgImage' )[ 0 ].style.height = fieldHeight;
+		
+		$( 'svg#line' ).attr( "width", fieldWidth );
+		$( 'svg#line' ).attr( "height", fieldHeight );
+		
+		
+		$( 'svg#line line' ).attr( "x1", 0 );
+		$( 'svg#line line' ).attr( "y1", fieldHeight );
+		
+
+	//dimensions of drawing of degree
+		
+		$( '#drawingOfDegree' ).attr( "width", fieldWidth );
+		$( '#drawingOfDegree' ).attr( "height", fieldHeight );
+	
+		
+// AIR DRAG CHANGED
+		$( '#dragTextBox input' ).change( function(){
+			userForceDrag = $( '#dragTextBox input' ).val();
+			
+			$( '#dragTextBox span' )[ 0 ].innerHTML = userForceDrag;
+		} );
+				
+				
+// BALL DENSITY CHANGED
+		$( '#ballDensityTextBox input' ).change( function(){
+			
+			ballDensity = $( '#ballDensityTextBox input' ).val();
+			
+			// show settings near to suwak
+			$( '#ballDensityTextBox span' )[ 0 ].innerHTML = ballDensity;
+			
+			
+		// calculations of mass again
+			calculate_ball_mass();
+		} );
+		
+
+//BALL SIZE CHANGED
+		//get ball size everytime it changes
+		$( '#ballSizeTextBox input' ).change( function(){
+		
+			ballSize = $( '#ballSizeTextBox input' ).val();
+		
+			$( '#ball' )[ 0 ].style.width = ballSize;
+			$( '#ball' )[ 0 ].style.height = ballSize;
+			// infobox settings
+			$( 'span#idStartBallPos' )[ 0 ].innerHTML = "x: " + ballSize/2 + ",  y: " + ballSize/2;
+			$( 'span#idBallSize' )[ 0 ].innerHTML = ballSize + "cm";
+			
+	// show settings near to suwak
+			$( '#ballSizeTextBox span' )[ 0 ].innerHTML = ballSize;
+			
+			
+		// calculations of mass again
+			calculate_ball_mass();
+		});
+		
+		
+///////////////////////////////////////
+			
+
+// ball clicked
+			$( '#ball' ).mousedown( function (){
+				wasBallClicked = 1
+				
+				// set attr x2 of line element inside svg element with id 'line'
+				//$( 'svg#line line' ).attr( "x2", "200" );
+				
+				if( startMouseX === 'undefined' )
+					startMouseX = event.pageX;
+				if( startMouseY === 'undefined' )
+					startMouseY = event.pageY;
+				
+				$( document ).on( "mousemove", function( event ) {
+					
+					
+				
+					if( mouseMoveCounter < mouseMoveDelayer ){
+						mouseMoveCounter += 1;
+						return;
+					}
+					else{
+						mouseMoveCounter = 0;
+					
+						//showpos of mouse
+						//console.log( event.pageX + " " + event.pageY );
+						// set variables for vector position
+						vectorX = startMouseX - event.pageX;
+						vectorY = startMouseY - event.pageY + $( "#mainContainer" ).height();
+						
+						
+						//set force in pixels
+						forceX = startMouseX - event.pageX;
+						forceY = -( startMouseY - event.pageY );
+						if( forceX < 0 ) forceX = 0;
+						if( forceY < 0 ) forceY = 0;
+						
+						
+/////////////////
+// MATHEMATICS //
+/////////////////
+						
+						// do mathematics only with ball clicked and mouse in movement
+						if( wasBallClicked ){
+						
+							forceMultiplier = $( 'input[name=forceMultiplier]:checked', '#forceMultiplierRadiosForm' ).val()
+							
+							console.log( forceMultiplier );
+							
+							// measure length of vector
+							// x^2 + y^2 = length ^2
+							// i to wszystko pod pierwiastek
+							vectorLength = Math.sqrt( Math.pow( forceX, 2 ) + Math.pow( forceY, 2 ) );
+							
+							// set span of forceVector
+							$( 'span#idForceVector' )[ 0 ].innerHTML = parseInt( vectorLength * forceMultiplier );
+							
+							
+							// cosinus of angle
+							// przyprostokątna przez przeciwprostokątną
+							cosAngle = forceX / vectorLength;
+							
+							// sinus of angle
+							// przeciwlegla przez przeciwprostokątną
+							sinAngle = forceY / vectorLength;
+							
+
+						
+							// prevent errors from displaying
+							// and set second point of visual vector
+							if( vectorX && vectorY ){
+								$( 'svg#line line' ).attr( "x2", vectorX );
+								$( 'svg#line line' ).attr( "y2", vectorY );
+							}
+							else{
+								$( 'svg#line line' ).attr( "x2", 0 );
+								$( 'svg#line line' ).attr( "y2", 0 );
+							}
+						}
+						
+						
+						// show forceX forceY
+						//console.log( "fx: " + forceX + "  fy: " + forceY );
+						
+					}
+				});
+			});
+			
+//ball unclicked
+			$( document ).mouseup( function (){
+				if( wasBallClicked ){
+				 // if field with grav was filled, then use this value
+					if( $( '#planetRadioTextBox' ).val() ){
+						var planetValue = $( '#planetRadioTextBox' ).val();
+					}else{					
+						var planetValue = $( 'input[name=planetRadio]:checked', '#planetRadiosForm' ).val()
+					}
+					forceGravitation = planetValue;
+
+					
+					// get value of drag from userinput
+					userForceDrag = $( '#dragTextBox input' ).val() / 100;
+					
+					
+					// show angle of throw
+					// acos return radians
+					// 1 radian ~ 57degree
+					// or calculate degrees by multiplying radians by 180 / PI
+					var radDegree = Math.acos( vectorX / vectorLength);
+					var degree = Math.acos( vectorX / vectorLength) * ( 180 / Math.PI );
+					
+					
+					
+					
+					var canvasHandler = $( '#drawingOfDegree' )[ 0 ];
+					var canvasDrawingHandler = canvasHandler.getContext( "2d" );
+					canvasDrawingHandler.beginPath();
+					// canvas.arc( startX, startY, radius, startAngle, endAngle, counterclockwise );
+					canvasDrawingHandler.arc( 0, fieldHeight, vectorLength/1.2, (2 * Math.PI - radDegree), 2 * Math.PI , 0 );
+					canvasDrawingHandler.stroke();
+					
+					
+					radDegree = Math.sqrt( radDegree );
+					
+					// font size is counted from "vector length" and "degrees in radians"
+					var fontProperties = vectorLength/3.9*radDegree + "px Arial";
+					canvasDrawingHandler.font = fontProperties;
+					// font position is counted from "vector length" and "degrees in radians". Tried to make it at middle 
+					
+					canvasDrawingHandler.fillText( parseInt( degree )+'°', vectorLength/3/radDegree, fieldHeight-vectorLength/8*radDegree );
+					
+					
+				
+			
+					startMouseX = 'undefined';
+					startMouseY = 'undefined';
+/////////////////
+// MATHEMATICS //
+/////////////////
+					//Prędkość pocz. pozioma: v0x = v0 · cos α
+					//Prędkość pocz. pionowa: v0y = v0 · sin α
+					v0x = vectorLength * cosAngle;
+					v0y = vectorLength * sinAngle;
+					
+					v0y *= forceMultiplier;
+					v0x *= forceMultiplier;
+					
+					v0y /= ballMass;
+					v0x /= ballMass;
+					
+					//start animation if not started yet
+					if( !animationInterval ){
+						animationInterval = setInterval( animate_ball, accuracy );
+					}
+					
+					//reset wasBallClicked
+					wasBallClicked = 0;
+				}
+				
+				
+			});
+			
+			
+			
+		});
+	</script>
+
+</head>
+<body>
+	<div id = "mainContainer" class = "unselectable"> 
+		<div id = "bgImage" ></div>
+		<svg id = "line" width = "500" height = "500" >
+			<line x1 = "0" y1 = "500" x2 = "0" y2 = "0" style="stroke:rgb(255,0,0);stroke-width:2" />
+		
+		</svg>
+		
+		
+		<canvas id = "drawingOfDegree">
+		
+			Twoja przeglądarka nie wspiera canvasów
+			A.K.A. nie będzie narysowanego kątu wyrzutu
+		</canvas>
+	
+		<div id = "yAxis">
+			<p>
+			  y
+			</p>
+		</div>
+		<div id = "xAxis">
+			<p>
+				x
+			</p>
+		</div>
+		<div id = "ball">
+		</div>
+		
+		<div id = "throwVector">
+		</div>
+		
+		
+		
+		<div id = "resetButton">
+			<a href = "" >RESET</a>
+		</div>
+	
+	</div>
+	
+	<div id = "boxes">
+	
+	
+		<div id = "infoBox" class = "unselectable">
+		<h2> infoBox </h2>
+			<p>Siła naciągu: <span id = "idForceVector"></span>N</p>
+			
+			<p>Pozycja startowa piłki: <span id = "idStartBallPos"></span></p>
+			<p>Wielkość piłki: <span id = "idBallSize"></span>cm</p>
+			<p>Masa piłki: <span id = "idBallMass"></span>kg</p>
+			<p>Odległość lądowania: <span id = "idBoink"></span>m</p>
+			<p>Najwyższa pozycja piłki: <span id = "idMaxBallHeight"></span>m</p>
+			<p>Czas do osiągnięcia maksymalnej wysokości: <span id = "idFlightTimeToMaxHeight"></span>s</p>
+			<p>Czas od wzlotu do upadku: <span id = "idFlightTime"></span>s</p>
+			<p>Aktualna prędkość: <span id = "idBallSpeed"></span>cm/s</p>
+			
+			
+		</div>
+		
+		<div id = "planetBox">
+			<form id = "forceMultiplierRadiosForm">
+				<p><input type = "radio" name = "forceMultiplier" value = "1" checked = "true" >x1</p>
+				<p><input type = "radio" name = "forceMultiplier" value = "10">x10         mnożnik siły rzutu</p>
+				<p><input type = "radio" name = "forceMultiplier" value = "100">x100</p>
+			</form>
+		
+			<div id = "ballDensityTextBox">
+				<!--        <input type = "range" value = "787" min = "1" max = "2365" > <span></span>         -->
+				<input type = "range" value = "24" min = "1" max = "1932" > <span></span>
+				<label>mg/cm^3 - gęstość materiału piłki</label>
+			</div>
+			
+			<div id = "ballSizeTextBox">
+				<input type = "range" value = "20" min = 5 > <span></span>
+				<label>cm - wielkość piłki</label>
+			</div>
+			
+			<div id = "dragTextBox" >
+				<input type = "range" value = 10 placeholder = "gęstość powietrza"> </input><span> </span><label> - opór ośrodka</label>
+			</div>
+			
+			<form id = "planetRadiosForm">
+				<p><input type = "radio" name = "planetRadio" value = "9.81" checked = "true" >Ziemia</p>
+				<p><input type = "radio" name = "planetRadio" value = "2.16">Księżyc</p>
+				<p><input type = "radio" name = "planetRadio" value = "24.8">Jowisz</p>
+				<input id = "planetRadioTextBox" type = "text" placeholder = "m/s^2"> </input>
+				<label>wybierz sobie grawitację lub wpisz ją z ręki</label>
+			</form>
+			</br>
+			
+		</div>
+		
+		
+	</div>
+
+
+</body>
+</html>
